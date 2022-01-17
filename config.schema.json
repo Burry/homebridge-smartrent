@@ -1,0 +1,39 @@
+{
+  "pluginAlias": "SmartRent",
+  "pluginType": "platform",
+  "singular": true,
+  "customUi": true,
+  "headerDisplay": "Homebridge plugin for SmartRent installations",
+  "footerDisplay": "For documentation please see [GitHub](https://github.com/Burry/homebridge-smartrent)",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "email": {
+        "title": "Email",
+        "type": "string",
+        "format": "email",
+        "required": true
+      },
+      "password": {
+        "title": "Password",
+        "type": "string",
+        "required": true
+      },
+      "tfaCode": {
+        "title": "Two-factor authentication code",
+        "type": "string",
+        "required": false,
+        "pattern": "^[0-9]{6}$",
+        "minLength": 6,
+        "maxLength": 6,
+        "description": "If you have enabled two-factor authentication on your SmartRent account, enter the six-digit code here, then restart Homebridge before the code expires."
+      },
+      "unitName": {
+        "title": "Unit name",
+        "type": "string",
+        "required": false,
+        "description": "Only necessary if you have multiple units in your SmartRent account. Get the name from the top of the More tab in the SmartRent app."
+      }
+    }
+  }
+}

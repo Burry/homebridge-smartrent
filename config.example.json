@@ -1,0 +1,18 @@
+{
+  "bridge": {
+    "name": "Homebridge",
+    "username": "00:00:00:00:00:00",
+    "port": 51702,
+    "pin": "000-00-000"
+  },
+  "accessories": [],
+  "platforms": [
+    {
+      "platform": "SmartRent",
+      "email": "user@example.com",
+      "password": "hunter2",
+      "tfaCode": "000000",
+      "unitName": "A1"
+    }
+  ]
+}

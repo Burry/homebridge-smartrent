@@ -1,0 +1,219 @@
+<style>
+  /* Hide number input */
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+</style>
+
+<img
+  src="banner.png"
+  alt="Homebridge SmartRent"
+  class="d-block mw-100 mx-auto"
+  style="max-height: 100px"
+/>
+
+<div class="card card-body my-4">
+  <form id="loginForm">
+    <h5 class="card-title">Login</h5>
+    <div class="form-group">
+      <label for="emailInput">Email</label>
+      <input type="email" class="form-control" id="emailInput" required />
+    </div>
+    <div class="form-group">
+      <label for="passwordInput">Password</label>
+      <input type="password" class="form-control" id="passwordInput" required />
+    </div>
+    <div class="form-group">
+      <label for="tfaCodeInput">Two-factor authentication code</label>
+      <input
+        type="number"
+        minlength="6"
+        maxlength="6"
+        class="form-control"
+        id="tfaCodeInput"
+        aria-describedby="tfaCodeHelpBlock"
+      />
+      <small id="tfaCodeHelpBlock" class="form-text text-muted">
+        If you have enabled two-factor authentication on your SmartRent account,
+        enter the six-digit code here.
+      </small>
+    </div>
+    <div class="text-center">
+      <button id="loginButton" type="submit" class="btn btn-primary" disabled>
+        Login
+      </button>
+      <button id="logoutButton" type="button" class="btn btn-danger" disabled>
+        Logout
+      </button>
+    </div>
+  </form>
+</div>
+
+<div class="card card-body my-4">
+  <form id="configForm">
+    <h5 class="card-title">Configuration</h5>
+    <div class="form-group">
+      <label for="tfaCodeInput">Unit name</label>
+      <input
+        type="text"
+        class="form-control"
+        id="unitNameInput"
+        aria-describedby="unitNameHelpBlock"
+      />
+      <small id="unitNameHelpBlock" class="form-text text-muted">
+        Only necessary if you have multiple units in your SmartRent account,
+        otherwise leave blank.
+        <br />
+        Get the name from the top of the More tab in the SmartRent app. (<a
+          href="https://apps.apple.com/us/app/smartrent/id1280670682"
+          target="_blank"
+          rel="noopener noreferrer"
+          >iOS</a
+        >,
+        <a
+          href="https://play.google.com/store/apps/details?id=com.smartrent.resident"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Android</a
+        >)
+      </small>
+    </div>
+  </form>
+</div>
+
+<script>
+  (async () => {
+    const configForm = document.getElementById('configForm');
+    const unitNameInput = document.getElementById('unitNameInput');
+
+    const loginForm = document.getElementById('loginForm');
+    const emailInput = document.getElementById('emailInput');
+    const passwordInput = document.getElementById('passwordInput');
+    const tfaCodeInput = document.getElementById('tfaCodeInput');
+    const loginButton = document.getElementById('loginButton');
+    const logoutButton = document.getElementById('logoutButton');
+
+    const updateLoginFormDisabled = () => {
+      if (emailInput.value && passwordInput.value) {
+        loginButton.removeAttribute('disabled');
+      } else {
+        loginButton.setAttribute('disabled', 'disabled');
+      }
+    };
+
+    const updateLoginForm = (email = '', password = '', tfaCode = '') => {
+      emailInput.setAttribute('value', email);
+      passwordInput.setAttribute('value', password);
+      tfaCodeInput.setAttribute('value', tfaCode);
+      updateLoginFormDisabled();
+    };
+
+    const pluginConfig = await homebridge.getPluginConfig();
+
+    // Initialize
+    if (!pluginConfig.length) {
+      pluginConfig.push({});
+      await homebridge.updatePluginConfig(pluginConfig);
+    } else {
+      unitNameInput.setAttribute('value', pluginConfig[0].unitName || '');
+      updateLoginForm(
+        pluginConfig[0].email || '',
+        pluginConfig[0].password || ''
+      );
+    }
+
+    try {
+      const sessionExistsResponse = await homebridge.request('/session');
+      if (sessionExistsResponse.code === 200) {
+        logoutButton.removeAttribute('disabled');
+      } else {
+        logoutButton.setAttribute('disabled', 'disabled');
+      }
+    } catch (error) {
+      homebridge.toast.error('Failed to check if a session exists', 'Error!');
+      console.error(error);
+    }
+
+    // Handle config form change
+    configForm.addEventListener('input', async () => {
+      if (unitNameInput.value) {
+        pluginConfig[0].unitName = unitNameInput.value;
+      }
+      await homebridge.updatePluginConfig(pluginConfig);
+    });
+
+    // Handle config form submit
+    configForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      await homebridge.savePluginConfig(pluginConfig);
+    });
+
+    // Handle login form change
+    loginForm.addEventListener('input', async event => {
+      updateLoginFormDisabled();
+      pluginConfig[0].email = emailInput.value;
+      pluginConfig[0].password = passwordInput.value;
+      if (tfaCodeInput.value) {
+        pluginConfig[0].tfaCode = tfaCodeInput.value;
+      }
+      await homebridge.updatePluginConfig(pluginConfig);
+    });
+
+    // Handle login form submit
+    loginForm.addEventListener('submit', async event => {
+      try {
+        event.preventDefault();
+        homebridge.showSpinner();
+        const payload = {
+          email: emailInput.value,
+          password: passwordInput.value,
+          tfaCode: tfaCodeInput.value,
+        };
+        const response = await homebridge.request('/login', payload);
+        homebridge.hideSpinner();
+        if (response.code === 200) {
+          homebridge.toast.success('Login successful', 'Success!');
+          await homebridge.savePluginConfig(pluginConfig);
+          logoutButton.removeAttribute('disabled');
+        } else if (response.code === 401) {
+          homebridge.toast.error(response.message, 'Error!');
+        } else {
+          homebridge.toast.error('Unknown response', 'Error!');
+        }
+      } catch (error) {
+        homebridge.toast.error(error.message, 'Error!');
+        homebridge.hideSpinner();
+        console.error(error);
+      }
+    });
+
+    // Handle logout
+    logoutButton.addEventListener('click', async () => {
+      try {
+        updateLoginForm();
+        homebridge.showSpinner();
+        pluginConfig[0].email = '';
+        pluginConfig[0].password = '';
+        pluginConfig[0].tfaCode = '';
+        await homebridge.updatePluginConfig(pluginConfig);
+        await homebridge.savePluginConfig(pluginConfig);
+        const response = await homebridge.request('/logout');
+        if (response) {
+          homebridge.toast.info('Logged out and deleted session', 'Info!');
+        }
+        logoutButton.setAttribute('disabled', 'disabled');
+        homebridge.hideSpinner();
+      } catch (error) {
+        homebridge.toast.error(error.message, 'Error!');
+        homebridge.hideSpinner();
+        console.error(error);
+      }
+    });
+  })();
+</script>
