@@ -33,12 +33,7 @@
         "tarballDir": "dist"
       }
     ],
-    [
-      "@semantic-release/github",
-      {
-        "assets": "dist/*.tgz"
-      }
-    ],
+    ["@semantic-release/github"],
     [
       "@semantic-release/git",
       {
