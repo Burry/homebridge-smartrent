@@ -53,7 +53,7 @@ export class LeakSensorAccessory {
     // see https://developers.homebridge.io/#/service/LeakSensor
     this.service
       .getCharacteristic(this.platform.Characteristic.LeakDetected)
-      .onGet(this.handleLeakDetected.bind(this));
+      .on('get', this.handleLeakDetected.bind(this));
   }
 
   private _getLeakDetectedCharacteristicValue(leak: boolean) {

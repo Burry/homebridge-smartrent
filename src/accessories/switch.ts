@@ -56,8 +56,8 @@ export class SwitchAccessory {
     // see https://developers.homebridge.io/#/service/Switch
     this.service
       .getCharacteristic(this.platform.Characteristic.On)
-      .onGet(this.handleOnGet.bind(this))
-      .onSet(this.handleOnSet.bind(this));
+      .on('get', this.handleOnGet.bind(this))
+      .on('set', this.handleOnSet.bind(this));
   }
 
   private static _getOnCharacteristicValue(on: boolean) {

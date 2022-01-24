@@ -56,12 +56,12 @@ export class LockAccessory {
     // see https://developers.homebridge.io/#/service/LockMechanism
     this.service
       .getCharacteristic(this.platform.Characteristic.LockCurrentState)
-      .onGet(this.handleLockCurrentStateGet.bind(this));
+      .on('get', this.handleLockCurrentStateGet.bind(this));
 
     this.service
       .getCharacteristic(this.platform.Characteristic.LockTargetState)
-      .onGet(this.handleLockTargetStateGet.bind(this))
-      .onSet(this.handleLockTargetStateSet.bind(this));
+      .on('get', this.handleLockTargetStateGet.bind(this))
+      .on('set', this.handleLockTargetStateSet.bind(this));
   }
 
   private _getLockStateCharacteristicValue(locked: boolean) {
