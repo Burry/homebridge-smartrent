@@ -2,7 +2,6 @@ import axios, { AxiosRequestConfig, AxiosResponse, AxiosInstance } from 'axios';
 import { existsSync, promises as fsPromises } from 'fs';
 import { API_URL, API_CLIENT_HEADERS } from './request';
 import { SmartRentAuthClient, Session } from './auth';
-import { logger } from './logger';
 import { SmartRentPlatform } from '../platform';
 
 export class SmartRentApiClient {
@@ -23,14 +22,8 @@ export class SmartRentApiClient {
       baseURL: API_URL,
       headers: API_CLIENT_HEADERS,
     });
-    apiClient.interceptors.request.use(
-      this._handleRequest.bind(this),
-      logger.error
-    );
-    apiClient.interceptors.response.use(
-      this._handleResponse.bind(this),
-      logger.error
-    );
+    apiClient.interceptors.request.use(this._handleRequest.bind(this));
+    apiClient.interceptors.response.use(this._handleResponse.bind(this));
     return apiClient;
   }
 
@@ -85,10 +78,10 @@ export class SmartRentApiClient {
 
     const { email, password, tfaCode } = this.platform.config;
     if (!email) {
-      logger.error('No email set in Homebridge config');
+      this.platform.log.error('No email set in Homebridge config');
     }
     if (!password) {
-      logger.error('No password set in Homebridge config');
+      this.platform.log.error('No password set in Homebridge config');
     }
     if (!email || !password) {
       return false;
@@ -100,7 +93,7 @@ export class SmartRentApiClient {
     });
     if (SmartRentAuthClient.isTfaSession(sessionData)) {
       if (!tfaCode) {
-        logger.error('No 2FA code set in Homebridge config');
+        this.platform.log.error('No 2FA code set in Homebridge config');
         return false;
       }
       sessionData = await this.authClient.getTfaSession({
@@ -114,7 +107,7 @@ export class SmartRentApiClient {
         sessionPath,
         JSON.stringify(sessionData, null, 2)
       );
-      logger.info('Saved session to', sessionPath);
+      this.platform.log.info('Saved session to', sessionPath);
       return true;
     }
 

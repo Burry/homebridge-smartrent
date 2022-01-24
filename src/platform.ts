@@ -16,7 +16,6 @@ import {
 import { SmartRentApi } from './lib/api';
 import { DeviceDataUnion } from './devices';
 import { SmartRentPlatformConfig } from './lib/config';
-import { initLogger } from './lib/logger';
 
 /**
  * SmartRentPlatform
@@ -35,7 +34,6 @@ export class SmartRentPlatform implements DynamicPlatformPlugin {
     public readonly api: API
   ) {
     log.debug(`Initializing ${this.config.name} platform`);
-    initLogger(log);
     this.smartRentApi = new SmartRentApi(this);
     log.debug('Finished initializing platform:', this.config.name);
 

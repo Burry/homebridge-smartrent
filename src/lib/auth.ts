@@ -1,7 +1,7 @@
+import { Logger } from 'homebridge';
 import axios, { AxiosResponse, AxiosInstance, AxiosError } from 'axios';
 import { URLSearchParams } from 'url';
 import { API_URL, AUTH_CLIENT_HEADERS } from './request';
-import { logger } from './logger';
 
 type LoginCredentials = {
   username: string;
@@ -40,11 +40,13 @@ export type Session = {
 };
 
 export class SmartRentAuthClient {
-  private readonly client: AxiosInstance;
   private session?: Session;
+  private readonly log: Logger;
+  private readonly client: AxiosInstance;
 
-  constructor(session?: Session) {
+  constructor(log?: Logger, session?: Session) {
     this.session = session;
+    this.log = log ?? console;
     this.client = this._initializeClient();
   }
 
@@ -58,10 +60,7 @@ export class SmartRentAuthClient {
       method: 'POST',
       headers: AUTH_CLIENT_HEADERS,
     });
-    authClient.interceptors.response.use(
-      this._handleResponse.bind(this),
-      logger.error
-    );
+    authClient.interceptors.response.use(this._handleResponse.bind(this));
     return authClient;
   }
 
@@ -71,7 +70,7 @@ export class SmartRentAuthClient {
    * @returns SmartRent response data payload
    */
   private _handleResponse(response: AxiosResponse) {
-    logger.debug('Response:', JSON.stringify(response.data, null, 2));
+    this.log.debug('Response:', JSON.stringify(response.data, null, 2));
     return response;
   }
 
@@ -109,7 +108,7 @@ export class SmartRentAuthClient {
       refreshToken: data.refresh_token,
       expires: new Date(1000 * data.expires - 100),
     };
-    logger.info(`${refreshed ? 'Refreshed' : 'Created'} SmartRent session`);
+    this.log.info(`${refreshed ? 'Refreshed' : 'Created'} SmartRent session`);
     return this.session;
   };
 
@@ -127,7 +126,7 @@ export class SmartRentAuthClient {
     if (this.session) {
       const refreshToken = this.session.refreshToken;
       if (!refreshToken) {
-        logger.error('No refresh token');
+        this.log.error('No refresh token');
         return;
       }
       try {
@@ -146,12 +145,9 @@ export class SmartRentAuthClient {
       } catch (error) {
         const axiosError = error as AxiosError;
         if (axiosError.response) {
-          logger.error(
-            'Failed to refresh session',
-            axiosError.response.statusText
-          );
+          this.log.error('Failed to refresh session');
         } else {
-          logger.error(
+          this.log.error(
             'Unknown error while attempting to refresh session',
             error
           );
@@ -167,10 +163,10 @@ export class SmartRentAuthClient {
   private async _createSession(credentials: LoginCredentials) {
     // Create a new session using the given credentials
     if (!credentials.username) {
-      logger.error('No email set in Homebridge config');
+      this.log.error('No email set in Homebridge config');
     }
     if (!credentials.password) {
-      logger.error('No password set in Homebridge config');
+      this.log.error('No password set in Homebridge config');
     }
     if (!credentials.username || !credentials.password) {
       return;
@@ -183,19 +179,16 @@ export class SmartRentAuthClient {
     } catch (error) {
       const axiosError = error as AxiosError;
       if (axiosError.response) {
-        if (axiosError.response.status === 401) {
-          logger.error(
-            'Invalid email or password',
-            axiosError.response.statusText
-          );
+        if (axiosError.response.status === 403) {
+          this.log.error('Invalid email or password');
         } else {
-          logger.error(
-            'Failed to create session',
-            axiosError.response.statusText
-          );
+          this.log.error('Failed to create session');
         }
       } else {
-        logger.error('Unknown error while attempting to create session', error);
+        this.log.error(
+          'Unknown error while attempting to create session',
+          error
+        );
       }
       return;
     }
@@ -206,11 +199,11 @@ export class SmartRentAuthClient {
     }
     // If 2FA is enabled, return the two-factor authentication data
     if (SmartRentAuthClient.isTfaSession(sessionData)) {
-      logger.debug('2FA enabled');
+      this.log.debug('2FA enabled');
       return sessionData;
     }
 
-    logger.error('Failed to create session');
+    this.log.error('Failed to create session');
   }
 
   public static isOauthSession = (
@@ -248,22 +241,18 @@ export class SmartRentAuthClient {
       if (SmartRentAuthClient.isOauthSession(sessionData)) {
         return this._storeSession(sessionData);
       }
-      logger.error('Failed to create two-factor authenticated session');
+      this.log.error('Failed to create two-factor authenticated session');
     } catch (error) {
       const axiosError = error as AxiosError;
       if (axiosError.response) {
-        if (axiosError.response.status === 401) {
-          logger.error('Invalid 2FA token', axiosError.response.statusText);
+        if (axiosError.response.status === 403) {
+          this.log.error('Invalid 2FA token');
         } else {
-          logger.error(
-            'Failed to create 2FA session',
-            axiosError.response.statusText
-          );
+          this.log.error('Failed to create 2FA session');
         }
       } else {
-        logger.error(
-          'Unknown error while attempting to create two-factor authenticated session',
-          error
+        this.log.error(
+          'Unknown error while attempting to create two-factor authenticated session'
         );
       }
     }
@@ -282,6 +271,6 @@ export class SmartRentAuthClient {
     if (session) {
       return session.accessToken;
     }
-    logger.warn('No SmartRent session');
+    this.log.warn('No SmartRent session');
   }
 }
