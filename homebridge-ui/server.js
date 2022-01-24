@@ -10,8 +10,7 @@ class PluginUiServer extends HomebridgePluginUiServer {
   constructor() {
     super();
 
-    this.pluginPath = `${this.homebridgeStoragePath}/smartrent`;
-    this.sessionPath = `${this.pluginPath}/session.json`;
+    this.sessionPath = `${this.homebridgeStoragePath}/smartrent/session.json`;
 
     this.onRequest('/session', this.checkSession.bind(this));
     this.onRequest('/logout', this.clearSession.bind(this));
@@ -48,7 +47,6 @@ class PluginUiServer extends HomebridgePluginUiServer {
 
   async login(payload) {
     try {
-      const authClient = new SmartRentAuthClient();
       const { email, password, tfaCode } = payload;
       if (!email) {
         console.error('Email required');
@@ -58,34 +56,22 @@ class PluginUiServer extends HomebridgePluginUiServer {
         console.error('Password required');
         return { code: 401, message: 'Password required' };
       }
-      let sessionData = await authClient.getSession({
-        username: email,
+      const authClient = new SmartRentAuthClient(this.homebridgeStoragePath);
+      const accessToken = await authClient.getAccessToken({
+        email,
         password,
+        tfaCode,
       });
-      if (SmartRentAuthClient.isTfaSession(sessionData)) {
-        if (!tfaCode) {
-          console.error('2FA code required');
-          return { code: 401, message: '2FA code required' };
-        }
-        sessionData = await authClient.getTfaSession({
-          tfa_api_token: sessionData.tfa_api_token,
-          token: tfaCode,
-        });
-      }
-      if (sessionData && sessionData.accessToken) {
-        if (!fs.existsSync(this.pluginPath)) {
-          await fsPromises.mkdir(this.pluginPath);
-        }
-        await fsPromises.writeFile(
-          this.sessionPath,
-          JSON.stringify(sessionData, null, 2)
-        );
-        console.info('Saved session to', this.sessionPath);
+      if (accessToken) {
         return { code: 200 };
       }
-      throw new RequestError('Failed to login to SmartRent', {
-        message: 'No access token returned',
-      });
+      if (authClient.isTfaSession) {
+        return {
+          code: 403,
+          message: tfaCode ? 'Invalid 2FA code' : '2FA code required',
+        };
+      }
+      return { code: 403, message: 'Invalid email or password' };
     } catch (error) {
       throw new RequestError('Failed to login to SmartRent', {
         message: error.message,

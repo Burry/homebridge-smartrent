@@ -181,7 +181,7 @@
           homebridge.toast.success('Login successful', 'Success!');
           await homebridge.savePluginConfig(pluginConfig);
           logoutButton.removeAttribute('disabled');
-        } else if (response.code === 401) {
+        } else if (response.code === 401 || response.code === 403) {
           homebridge.toast.error(response.message, 'Error!');
         } else {
           homebridge.toast.error('Unknown response', 'Error!');

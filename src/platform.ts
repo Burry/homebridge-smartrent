@@ -38,7 +38,7 @@ export class SmartRentPlatform implements DynamicPlatformPlugin {
     log.debug('Finished initializing platform:', this.config.name);
 
     this.api.on('didFinishLaunching', async () => {
-      if (await this.smartRentApi.client.authenticate()) {
+      if (await this.smartRentApi.client.getAccessToken()) {
         await this.discoverDevices();
       }
       log.debug('Executed didFinishLaunching callback');

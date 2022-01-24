@@ -1,13 +1,24 @@
 import { Logger } from 'homebridge';
 import axios, { AxiosResponse, AxiosInstance, AxiosError } from 'axios';
+import { existsSync, promises as fsPromises } from 'fs';
 import { URLSearchParams } from 'url';
+import { resolve as pathResolve } from 'path';
+import { SmartRentPlatformConfig } from './config';
 import { API_URL, AUTH_CLIENT_HEADERS } from './request';
 
+/** Credentials stored in config.json */
+type ConfigCredentials = Pick<
+  SmartRentPlatformConfig,
+  'email' | 'password' | 'tfaCode'
+>;
+
+/** Login credentials used in SmartRent session request */
 type LoginCredentials = {
   username: string;
   password: string;
 };
 
+/** Two-factor authentication credentials used in SmartRent session request */
 type TfaCredentials = {
   tfa_api_token: string;
   token: string;
@@ -15,6 +26,7 @@ type TfaCredentials = {
 
 type Credentials = LoginCredentials | TfaCredentials;
 
+/** OAuth data returned by SmartRent session response */
 type OAuthSessionData = {
   user_id: number;
   access_token: string;
@@ -22,6 +34,7 @@ type OAuthSessionData = {
   expires: number;
 };
 
+/** 2FA data returned by SmartRent two-factor authenticated session response */
 type TfaSessionData = {
   tfa_api_token: string;
 };
@@ -30,8 +43,10 @@ type SessionData = OAuthSessionData | TfaSessionData;
 
 type SessionApiResponse = {
   data: SessionData;
+  error?: string;
 };
 
+/** Session stored in session.json */
 export type Session = {
   userId: number;
   accessToken: string;
@@ -39,15 +54,38 @@ export type Session = {
   expires: Date;
 };
 
+/**
+ * SmartRent Auth client
+ */
 export class SmartRentAuthClient {
+  public isTfaSession = false;
   private session?: Session;
+  private storagePath = '~/.homebridge';
+  private pluginPath = '~/.homebridge/smartrent';
+  private sessionPath = '~/.homebridge/smartrent/session.json';
   private readonly log: Logger;
   private readonly client: AxiosInstance;
 
-  constructor(log?: Logger, session?: Session) {
-    this.session = session;
+  constructor(storagePath: string, log?: Logger) {
+    this.storagePath = storagePath;
+    this.pluginPath = pathResolve(this.storagePath, 'smartrent');
+    this.sessionPath = pathResolve(this.pluginPath, 'session.json');
     this.log = log ?? console;
     this.client = this._initializeClient();
+  }
+
+  private static _isOauthSession = (
+    sessionData?: object
+  ): sessionData is OAuthSessionData =>
+    !!sessionData && 'access_token' in sessionData;
+
+  private static _isTfaSession = (
+    sessionData?: object
+  ): sessionData is TfaSessionData =>
+    !!sessionData && 'tfa_api_token' in sessionData;
+
+  private static _getExpireDate(milliseconds: number) {
+    return new Date(1000 * milliseconds - 100);
   }
 
   /**
@@ -75,7 +113,7 @@ export class SmartRentAuthClient {
   }
 
   /**
-   * Attempt to start a new OAuth 2 session
+   * Request a new session using either basic or 2FA credentials
    * @param credentials username/password or two-factor authentication credentials
    * @returns OAuth 2 session or two-factor authentication data
    */
@@ -96,138 +134,104 @@ export class SmartRentAuthClient {
   }
 
   /**
-   * Format and store session data from SmartRent API
-   * @param data SmartRent session data
-   * @param refreshed Whether the session was refreshed
-   * @returns formatted session data
+   * Read the session from session.json and store in this.session
+   * @returns Session data
    */
-  private _storeSession = (data: OAuthSessionData, refreshed?: boolean) => {
-    this.session = {
-      userId: data.user_id,
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expires: new Date(1000 * data.expires - 100),
-    };
-    this.log.info(`${refreshed ? 'Refreshed' : 'Created'} SmartRent session`);
-    return this.session;
-  };
-
-  /**
-   * Get the stored session or a refreshed session if expired
-   * @returns OAuth2 session data
-   */
-  private async _getStoredOrRefreshedSession() {
-    // Return the stored session if it's valid
-    if (!!this.session && new Date(this.session.expires) > new Date()) {
-      return this.session;
-    }
-
-    // Refresh the session if it's expired
-    if (this.session) {
-      const refreshToken = this.session.refreshToken;
-      if (!refreshToken) {
-        this.log.error('No refresh token');
-        return;
-      }
-      try {
-        const response = await this.client.post<{ data: OAuthSessionData }>(
-          '/tokens',
-          undefined,
-          {
-            headers: {
-              ...AUTH_CLIENT_HEADERS,
-              'Authorization-X-Refresh': refreshToken,
-            },
-          }
-        );
-        const sessionData = response.data.data;
-        return this._storeSession(sessionData, true);
-      } catch (error) {
-        const axiosError = error as AxiosError;
-        if (axiosError.response) {
-          this.log.error('Failed to refresh session');
-        } else {
-          this.log.error(
-            'Unknown error while attempting to refresh session',
-            error
-          );
-        }
-      }
+  private async _readStoredSession() {
+    if (existsSync(this.sessionPath)) {
+      const sessionString = await fsPromises.readFile(this.sessionPath, 'utf8');
+      const session = JSON.parse(sessionString) as Session;
+      this.session = session;
+    } else if (!existsSync(this.pluginPath)) {
+      await fsPromises.mkdir(this.pluginPath);
     }
   }
 
   /**
-   * Get a new session
+   * Format session data from SmartRent API and store to disk
+   * @param data SmartRent session data
+   * @param refreshed Whether the session was refreshed
+   * @returns formatted session data
+   */
+  private async _storeSession(data: OAuthSessionData, refreshed = false) {
+    const session = {
+      userId: data.user_id,
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expires: SmartRentAuthClient._getExpireDate(data.expires),
+    };
+    this.session = session;
+    this.log.info(`${refreshed ? 'Refreshed' : 'Started'} SmartRent session`);
+    const sessionStr = JSON.stringify(this.session, null, 2);
+    await fsPromises.writeFile(this.sessionPath, sessionStr);
+    this.log.debug('Saved session to', this.sessionPath);
+    return this.session;
+  }
+
+  /**
+   * Start a new session
+   * @param credentials email, password, and 2FA credentials
    * @returns OAuth2 session data
    */
-  private async _createSession(credentials: LoginCredentials) {
+  private async _startSession(credentials: ConfigCredentials) {
+    const { email, password, tfaCode } = credentials;
+
     // Create a new session using the given credentials
-    if (!credentials.username) {
-      this.log.error('No email set in Homebridge config');
-    }
-    if (!credentials.password) {
-      this.log.error('No password set in Homebridge config');
-    }
-    if (!credentials.username || !credentials.password) {
+    if (!email && !password) {
+      this.log.error('No email or password configured');
+      return;
+    } else if (!email) {
+      this.log.error('No email configured');
+      return;
+    } else if (!password) {
+      this.log.error('No password configured');
       return;
     }
 
-    let sessionData: SessionData;
-
-    try {
-      sessionData = await this._requestSession(credentials);
-    } catch (error) {
-      const axiosError = error as AxiosError;
-      if (axiosError.response) {
-        if (axiosError.response.status === 403) {
-          this.log.error('Invalid email or password');
-        } else {
-          this.log.error('Failed to create session');
-        }
-      } else {
-        this.log.error(
-          'Unknown error while attempting to create session',
-          error
-        );
-      }
-      return;
-    }
+    // Attempt to start a session using the given email and password
+    const sessionData = await this._startBasicSession({
+      username: email,
+      password,
+    });
 
     // If authentication is complete, return the session
-    if (SmartRentAuthClient.isOauthSession(sessionData)) {
+    if (SmartRentAuthClient._isOauthSession(sessionData)) {
+      this.isTfaSession = false;
       return this._storeSession(sessionData);
     }
-    // If 2FA is enabled, return the two-factor authentication data
-    if (SmartRentAuthClient.isTfaSession(sessionData)) {
+
+    // If 2FA is enabled, start a 2FA session
+    if (SmartRentAuthClient._isTfaSession(sessionData)) {
       this.log.debug('2FA enabled');
-      return sessionData;
+      this.isTfaSession = true;
+      if (!tfaCode) {
+        this.log.error('Account has 2FA enabled but no 2FA code is configured');
+        return;
+      }
+      return this._startTfaSession({
+        tfa_api_token: sessionData.tfa_api_token,
+        token: tfaCode,
+      });
     }
 
     this.log.error('Failed to create session');
   }
 
-  public static isOauthSession = (
-    sessionData?: object
-  ): sessionData is OAuthSessionData =>
-    !!sessionData && 'access_token' in sessionData;
-
-  public static isTfaSession = (
-    sessionData?: object
-  ): sessionData is TfaSessionData =>
-    !!sessionData && 'tfa_api_token' in sessionData;
-
   /**
-   * Get the current session if valid, a new session, or a refreshed session
+   * Get a new session using the given username & password
+   * @param credentials username & password credentials
    * @returns OAuth2 session data
    */
-  public async getSession(credentials: LoginCredentials) {
-    // Return the stored or refreshed session
-    const session = await this._getStoredOrRefreshedSession();
-    if (session) {
-      return session;
+  private async _startBasicSession(credentials: LoginCredentials) {
+    try {
+      return this._requestSession(credentials);
+    } catch (error) {
+      this._handleResponseError(
+        error,
+        'Invalid email or password',
+        'create session'
+      );
     }
-    // Create a new session using the given credentials
-    return this._createSession(credentials);
   }
 
   /**
@@ -235,42 +239,108 @@ export class SmartRentAuthClient {
    * @param credentials two-factor authentication credentials
    * @returns OAuth2 session data
    */
-  public async getTfaSession(credentials: TfaCredentials) {
+  private async _startTfaSession(credentials: TfaCredentials) {
     try {
       const sessionData = await this._requestSession(credentials);
-      if (SmartRentAuthClient.isOauthSession(sessionData)) {
+      if (SmartRentAuthClient._isOauthSession(sessionData)) {
         return this._storeSession(sessionData);
       }
-      this.log.error('Failed to create two-factor authenticated session');
+      this.log.error('Failed to create 2FA session');
     } catch (error) {
-      const axiosError = error as AxiosError;
-      if (axiosError.response) {
-        if (axiosError.response.status === 403) {
-          this.log.error('Invalid 2FA token');
-        } else {
-          this.log.error('Failed to create 2FA session');
-        }
-      } else {
-        this.log.error(
-          'Unknown error while attempting to create two-factor authenticated session'
-        );
-      }
+      this._handleResponseError(
+        error,
+        'Invalid 2FA code',
+        'create 2FA session'
+      );
     }
   }
 
-  public setSession(session: Session) {
-    this.session = session;
+  /**
+   * Refresh a session
+   * @returns OAuth2 session data
+   */
+  private async _refreshSession() {
+    const refreshToken = this.session?.refreshToken;
+    if (!refreshToken) {
+      this.log.error('No refresh token');
+      return;
+    }
+    try {
+      const response = await this.client.post<{ data: OAuthSessionData }>(
+        '/tokens',
+        undefined,
+        {
+          headers: {
+            ...AUTH_CLIENT_HEADERS,
+            'Authorization-X-Refresh': refreshToken,
+          },
+        }
+      );
+      const sessionData = response.data.data;
+      return this._storeSession(sessionData, true);
+    } catch (error) {
+      this._handleResponseError(
+        error,
+        'Refresh token expired',
+        'refresh session'
+      );
+    }
+  }
+
+  private _handleResponseError(
+    error: unknown,
+    authMsg: string,
+    action: string
+  ) {
+    const axiosError = error as AxiosError;
+    if (axiosError.response) {
+      if (
+        axiosError.response.status === 401 ||
+        axiosError.response.status === 403
+      ) {
+        this.log.error(authMsg);
+      } else {
+        this.log.error(`Failed to ${action}`);
+      }
+    } else {
+      this.log.error(`Unknown error while attempting to ${action}`, error);
+    }
+  }
+
+  /**
+   * Get the current session if valid, a new session, or a refreshed session
+   * @returns OAuth2 session data
+   */
+  private async _getSession(credentials: ConfigCredentials) {
+    await this._readStoredSession();
+
+    // Return the stored session if it's valid
+    if (!!this.session && new Date(this.session.expires) > new Date()) {
+      return this.session;
+    }
+
+    // Refresh the session if it's expired
+    if (this.session) {
+      this.log.warn('Access token expired, attempting to refresh session');
+      const refreshedSession = await this._refreshSession();
+      if (refreshedSession) {
+        return refreshedSession;
+      }
+    }
+
+    // Create a new session using the given credentials
+    return this._startSession(credentials);
   }
 
   /**
    * Get the stored access token or a refreshed token if it's expired
    * @returns OAuth2 access token
    */
-  public async getAccessToken() {
-    const session = await this._getStoredOrRefreshedSession();
-    if (session) {
+  public async getAccessToken(credentials: ConfigCredentials) {
+    const session = await this._getSession(credentials);
+    if (session && 'accessToken' in session) {
       return session.accessToken;
     }
-    this.log.warn('No SmartRent session');
+    this.log.error('Failed to authenticate with SmartRent');
   }
 }

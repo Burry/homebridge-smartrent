@@ -1,7 +1,6 @@
 import axios, { AxiosRequestConfig, AxiosResponse, AxiosInstance } from 'axios';
-import { existsSync, promises as fsPromises } from 'fs';
 import { API_URL, API_CLIENT_HEADERS } from './request';
-import { SmartRentAuthClient, Session } from './auth';
+import { SmartRentAuthClient } from './auth';
 import { SmartRentPlatform } from '../platform';
 
 export class SmartRentApiClient {
@@ -9,7 +8,10 @@ export class SmartRentApiClient {
   private readonly apiClient: AxiosInstance;
 
   constructor(private readonly platform: SmartRentPlatform) {
-    this.authClient = new SmartRentAuthClient();
+    this.authClient = new SmartRentAuthClient(
+      platform.api.user.storagePath(),
+      platform.log
+    );
     this.apiClient = this._initializeApiClient();
   }
 
@@ -28,12 +30,24 @@ export class SmartRentApiClient {
   }
 
   /**
+   * Get the SmartRent API access token
+   * @returns Oauth access token
+   */
+  public async getAccessToken() {
+    return this.authClient.getAccessToken({
+      email: this.platform.config.email,
+      password: this.platform.config.password,
+      tfaCode: this.platform.config.tfaCode,
+    });
+  }
+
+  /**
    * Attach the access token to the SmartRent API request and log the request
    * @param config Axios request config
    * @returns Axios request config
    */
   private async _handleRequest(config: AxiosRequestConfig) {
-    const accessToken = await this.authClient.getAccessToken();
+    const accessToken = await this.getAccessToken();
     config.headers = {
       ...config.headers,
       Authorization: `Bearer ${accessToken}`,
@@ -53,65 +67,6 @@ export class SmartRentApiClient {
       JSON.stringify(response.data, null, 2)
     );
     return response;
-  }
-
-  /**
-   * Get the current session if valid, a new session, or a refreshed session
-   * @returns true if a session exists, false otherwise
-   */
-  public async authenticate() {
-    const pluginPath = `${this.platform.api.user.storagePath()}/smartrent`;
-    const sessionPath = `${pluginPath}/session.json`;
-
-    if (existsSync(sessionPath)) {
-      const sessionString = await fsPromises.readFile(sessionPath, 'utf8');
-      const session = JSON.parse(sessionString) as Session;
-      this.authClient.setSession(session);
-    } else if (!existsSync(pluginPath)) {
-      await fsPromises.mkdir(pluginPath);
-    }
-
-    const accessToken = await this.authClient.getAccessToken();
-    if (accessToken) {
-      return true;
-    }
-
-    const { email, password, tfaCode } = this.platform.config;
-    if (!email) {
-      this.platform.log.error('No email set in Homebridge config');
-    }
-    if (!password) {
-      this.platform.log.error('No password set in Homebridge config');
-    }
-    if (!email || !password) {
-      return false;
-    }
-
-    let sessionData = await this.authClient.getSession({
-      username: email,
-      password,
-    });
-    if (SmartRentAuthClient.isTfaSession(sessionData)) {
-      if (!tfaCode) {
-        this.platform.log.error('No 2FA code set in Homebridge config');
-        return false;
-      }
-      sessionData = await this.authClient.getTfaSession({
-        tfa_api_token: sessionData.tfa_api_token,
-        token: tfaCode,
-      });
-    }
-
-    if (sessionData?.accessToken) {
-      await fsPromises.writeFile(
-        sessionPath,
-        JSON.stringify(sessionData, null, 2)
-      );
-      this.platform.log.info('Saved session to', sessionPath);
-      return true;
-    }
-
-    return false;
   }
 
   // API request methods
