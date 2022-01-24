@@ -58,7 +58,7 @@
     "compile": "tsc",
     "build": "npm-run-all clean compile",
     "watch": "npm run build && npm link && nodemon",
-    "prepublishOnly": "npm-run-all typecheck prettier lint build",
+    "prepublishOnly": "npm-run-all prettier lint build",
     "semantic-release": "cross-env HUSKY=0 semantic-release"
   },
   "dependencies": {

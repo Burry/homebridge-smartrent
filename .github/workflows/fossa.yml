@@ -1,0 +1,18 @@
+name: FOSSA scan
+
+on: push
+
+jobs:
+  fossa-scan:
+    name: FOSSA scan
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: FOSSA scan
+        uses: fossas/fossa-action@main
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
