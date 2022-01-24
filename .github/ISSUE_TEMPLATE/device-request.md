@@ -19,10 +19,10 @@ assignees: Burry
 <!-- We need to understand the data sent and received by the SmartRent app to control this device. -->
 <!-- Please replace [ ] with [X] if you agree to help. -->
 
+[ ] I am willing to provide network logs to assist in adding support for this device.
+
 **Additional context:**
 
 <!-- Add any other context or screenshots about the device request here. -->
-
-[ ] I am willing to provide network logs to assist in adding support for this device.
 
 <!-- Click the "Preview" tab before you submit to ensure the formatting is correct. -->

@@ -25,7 +25,7 @@ Homebridge SmartRent currently supports these devices through a SmartRent hub:
 - 💧 Leak sensors
 - 🔌 Switches
 
-If you have another device connected to SmartRent and would like to see it supported in this plugin, please open a [device request](https://github.com/Burry/homebridge-smartrent/issues/new?assignees=&labels=enhancement,new%20device&template=feature-request.md&title=New%20device:) issue.
+If you have another device connected to SmartRent and would like to see it supported in this plugin, please open a [device request](https://github.com/Burry/homebridge-smartrent/issues/new?assignees=&labels=enhancement,new%20device&template=device-request.md&title=New%20device:) issue.
 
 ## ✅ Usage
 
