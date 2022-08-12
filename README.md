@@ -1,3 +1,9 @@
+# ⚠️ Archival Notice
+
+**I've moved to a different apartment and no longer have access to a SmartRent installation. Therefore I won't be maintaining or testing this plugin and have archived the repository. [Keep an eye out for forks](https://github.com/Burry/homebridge-smartrent/network/members)!**
+
+---
+
 <span align="center">
 
 <h1>
