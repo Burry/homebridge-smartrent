@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.3](https://github.com/Burry/homebridge-smartrent/compare/v1.0.2...v1.0.3) (2022-08-12)
+
+
+### Bug Fixes
+
+* use Promise-based event listener registration ([#96](https://github.com/Burry/homebridge-smartrent/issues/96)) ([d23dbf7](https://github.com/Burry/homebridge-smartrent/commit/d23dbf7e276e82d49b11d2f62690f0ac26b33c7a)), closes [#4](https://github.com/Burry/homebridge-smartrent/issues/4) [#5](https://github.com/Burry/homebridge-smartrent/issues/5)
+
 ### [1.0.2](https://github.com/Burry/homebridge-smartrent/compare/v1.0.1...v1.0.2) (2022-01-24)
 
 
